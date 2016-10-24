@@ -1,0 +1,215 @@
+
+ハンズオン+caffeに関する色々
+
+---[caffeでのDeepLearningの流れ]-------------------------------------------------------
+
+①データセットの準備	
+	- データの取得、前処理・正規化など
+②データの格納
+	- lmdb or leveldb、学習用データ/評価用データ分類
+③パラメータ設定
+	- NNのネットワーク定義やcaffeの動作パラメータの設定などなど
+④学習実行
+	- データとパラメータを基に、機械学習
+⑤学習モデルの利用
+	- 新しい画像の分類検証
+
+
+
+
+---[cifar10を例にした流れ]--------------------------------------------------------------
+
+①データセットの準備
+	$ cd caffe/data/cifar10	
+	$ ./get_cifar10.sh	（CIFAR10のデータをダウンロード + データ展開）	
+	$ ls -ltr 		（取得したデータの確認(バイナリ)）
+②データの格納
+	$ cd ~/caffe
+	$ ./examples/cifar10/create_cifar10.sh （LMDBにデータ格納 + 平均画像の作成）
+	$ ls -ltr examples/cifar10 	（出来上がったデータファイルの確認）
+③パラメータ設定
+	・リファレンスモデルで用意されているパラメータをそのまま使用
+	・この際CPUで実行する場合はcifar10_quick_solver.prototxt内でlsモードを変更
+④学習実行
+	$ cd ~/caffe
+	$ build/tools/caffe train --solver examples/cifar10/cifar10_quick_solver.prototxt
+	　（③で定義したファイルを指定し、機械学習を実行）
+	・最終的にIteration回数分でのaccuracyとlossがが出て「Optimization Done」と出る
+	・学習したモデルは「.caffemodel」「.solverstate」でファイルに出力される
+	$ ls -ltr examples/cifar10 （学習モデルファイルの確認）
+	($ ls -ltr /tmp でも確認可能)
+	・学習曲線を描きたい場合は以下のようにしてファイルから抽出可能
+	$ cat /tmp/caffe.INFO | grep "accuracy = "	
+⑤学習モデルの利用
+	$ cd 
+	$ ls -ltr （ホームに判定したい画像があることの確認）
+	$ vi cifar10_classifier.py	（画像分類を実行するプログラムを作成 後述①）
+	( wget https://dl.dropboxusercontent.com/u/8148946/Develop/aws/cifar10_classiﬁer.py )
+	$ python cifar10_classifier.py ***.jpg	（画像分類を実行）
+	・するとクラス毎の確率が表示され、正解が表示される
+
+
+
+
+
+---[自分でデータセットを準備する場合(lfwを例に)]-------------------------------------------
+
+・事前準備
+	・cifar10は画像分類として汎用的に利用できるモデルのため、作業用ディレクトリをコピーする
+	$ cd ~/caffe/examples
+	$ cp -pr cifar10 handson （cifar10のディレクトリをhandsonというディレクトリにコピー）
+	$ ls -ltr  	（handsonディレクトリが作成されていることの確認）
+①データセットの準備
+	$ cd
+	・lfwのクレンジング済みのデータをDropBoxからダウンロード
+	$ wget https://dl.dropboxusercontent.com/u/8148946/Develop/aws/lfw3.zip
+	$ unzip lfw3.zip （ファイルを解答）
+	$ cd lfw3
+	$ ls -ltr man | wc （manディレクトリの画像枚数を確認）
+	$ ls -ltr woman | wc　（womanディレクトリの画像枚数を確認）
+	・画像をそのまま使うとサイズがいまいちだったり、コントラストが効いていたりするので正規化する
+	$ sudo apt-get -y install imagemagick
+	$ mogrify -equalize */*.jpg （画像のヒストグラム均等化、*.jpgで特定ファイル内のみ）
+	$ mogrify -geometry 32x32 */*.jpg （32x32pxにサイズ変更、*/*では全ディレクトリに対して）
+②データの格納
+	$ vi create_lmdb.py	（正規化済みの画像データをLMDBに格納するプログラムの作成）
+	($ wget https://dl.dropboxusercontent.com/u/8148946/develop/aws/create_lmdb.py
+	   でDropBoxよりダウンロード可能)
+	 // /home/ubuntu... を /home/tomoyaに変更
+	$ sudo pip install lmdb
+	$ python create_lmdb.py (train_lmdb, test_lmdb供にディレクトリの変更)
+	$ ls -ltr ~/caffe/examples/handson	（出来上がったデータの確認）
+	・ファイルができているだけだと不安なので、DBにちゃんとレコードが書き込まれているか読み込む	
+	$ vi read_lmdb.py　//ubuntu を tomoyaに変更
+	（$ wget https://dl.dropboxusercontent.com/u/8148946/develop/aws/read_lmdb.py）
+	$ pyton read_lmdb.py
+	・前処理の一環として作成したDBを使って平均画像を生成
+	$ cd ~/caffe
+	$ build/tools/compute_image_mean -backend=lmdb examples/handson/handson_train_lmdb examples/handson/mean.binaryproto
+③パラメータ設定
+	・cifar10のパラメータをもとに書き換えていく
+	$ cd ~/caffe/examples/handson
+	$ cp -p cifar10_quick_solver.prototxt handson_quick_solver.prototxt
+	$ vi handson_quick_solver.prototxt
+	・ここで「net:」と「snapshot_prefix:」のあとのパスを変更	
+	$ cp -p cifar10_quick.prototxt handson_quick.prototxt
+	$ vi handson_quick.prototxt
+	・ここで冒頭「name:」と末尾「num_output:」を変更しSoftmaxへの出力数を分類するクラス数に変更
+	$ cp -p cifar10_quick_train_test.prototxt handson_quick_train_test.prototxt
+	$ vi handson_quick_train_test.prototxt
+	・ここで「name:」「mean_file:」「source:」「mean_file:」「source:」「num_output:」を変更
+④学習実行
+	$ cd ~/caffe
+	$ build/tools/caffe train --solver examples/handson/handson_quick_solver.prototxt
+	・Optimization Done. が出るまで待機
+⑤学習モデルの利用
+	$ cd
+	$ vi handson_classifier.py	（画像分類のためのプログラムを作成）
+	（$ wget https://dl.dropboxusercontent.com/u/8148946/Develop/aws/handson_classiﬁer.py より入手可能）
+	
+	
+=====ニューラルネットグラフ構造の確認======================================================
+
+	$ ./python/draw_net.py ./examples/coil-100/coil-100_quick.prototxt ./caffeNet/coil-100Net.png
+
+
+=====プログラム==========================================================================
+
+--cifar10_classifier.py-----------------------------------------------------------------
+
+import sys
+import caffe
+from caffe.proto import caffe_pb2
+import numpy
+
+cifar_map = {
+        0: "airplane",
+        1: "automobile",
+        2: "bird",
+        3: "cat",
+        4: "deer",
+        5: "dog",
+        6: "frog",
+        7: "horce",
+        8: "ship",
+        9:"truck"
+}
+
+mean_blob = caffe_pb2.BlobProto()
+with open('caffe/examples/cifar10/mean.binaryproto') as f:
+        mean_blob.ParseFromString(f.read())
+
+mean_array = numpy.asarray(mean_blob.data, dtype=numpy.float32).reshape(
+        (mean_blob.channels, mean_blob.height, mean_blob.width)
+)
+
+classifier = caffe.Classifier(
+        'caffe/examples/cifar10/cifar10_quick.prototxt',
+        'caffe/examples/cifar10/cifar10_quick_iter_4000.caffemodel.h5',
+        mean = mean_array,
+        raw_scale = 255)
+
+image = caffe.io.load_image(sys.argv[1])
+predictions = classifier.predict([image], oversample= False)
+answer = numpy.argmax(predictions)
+print(predictions)
+print(str(answer) + ":" + cifar_map[answer])
+
+
+--handson_classifier.py---------------------------------------------------------------
+
+import sys
+import os
+import caffe
+from caffe.proto import caffe_pb2
+import numpy
+
+cifar_map = {
+        0: "man",
+        1: "woman"
+}
+
+os.system('convert ' + sys.argv[1] + ' -equalize test.jpg')
+
+mean_blob = caffe_pb2.BlobProto()
+with open('caffe/examples/handson/mean.binaryproto') as f:
+        mean_blob.ParseFromString(f.read())
+
+mean_array = numpy.asarray(mean_blob.data, dtype=numpy.float32).reshape(
+        (mean_blob.channels, mean_blob.height, mean_blob.width)
+)
+
+classifier = caffe.Classifier(
+        'caffe/examples/handson/handson_quick.prototxt',
+        'caffe/examples/handson/handson_quick_iter_4000.caffemodel.h5',
+        mean = mean_array,
+        raw_scale = 255)
+
+image = caffe.io.load_image('test.jpg')
+predictions = classifier.predict([image], oversample= False)
+answer = numpy.argmax(predictions)
+print(predictions)
+print(str(answer) + ":" + cifar_map[answer])
+ 
+---------------------------------------------------------------------------------------
+
+
+==ログにTrain Accuracyを出力する=========================================================
+
+・ニューラルネットワークの定義ファイル（.prototxt）を編集
+・"Accuracy"の層のincludeの部分を削除
+
+
+layer {
+  name: "accuracy"
+  type: "Accuracy"
+  bottom: "ip1"
+  bottom: "label"
+  top: "accuracy"
+  include {      # <-
+    phase: TEST  # <- この3行を削除
+  }              # <-
+}
+
+
+
