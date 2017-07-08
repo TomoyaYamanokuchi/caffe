@@ -1,0 +1,27 @@
+filename = glob.glob('/home/tomoya/coil-100/*.png')
+#print filename
+
+#for name in filename:
+	#print os.path.basename(name)
+
+for name in filename:
+	print name 
+        path = os.path.basename(name)
+	print "path = " + path
+	num_underbar = path.find("_")
+	print "position'_' = " +  str(num_underbar)
+	 
+	print  path[:num_underbar]
+	object_name = path[:num_underbar]
+	object_num = object_name[3:]
+	print object_num
+	
+	num_dot = path.find(".")
+	print "position'.' = " + str(num_dot)
+	print path[num_underbar+2:num_dot]
+	degree = path[num_underbar+2:num_dot]
+
+	if (int(degree) + 10) % 10 == 0:
+		shutil.copy(name, "/home/tomoya/coil-100/"+object_name+"/" + object_num + "_10")
+	else:
+		shutil.copy(name, "/home/tomoya/coil-100/"+object_name+"/" + object_num + "_5")
